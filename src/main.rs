@@ -1,5 +1,7 @@
-use std::collections::HashMap;
-use std::path::Path;
+use anyhow::Result;
+use chrono::NaiveDateTime;
+use exif::{In, Reader, Tag, Value};
+use std::{fs::File, io::BufReader, path::Path};
 use walkdir::WalkDir;
 
 #[derive(Debug, Clone, Copy)]
@@ -26,20 +28,49 @@ fn classify(path: &Path) -> Kind {
     }
 }
 
-fn print_top(title: &str, map: &HashMap<String, u64>, n: usize) {
-    let mut v: Vec<(&String, &u64)> = map.iter().collect();
-    v.sort_by(|a, b| b.1.cmp(a.1));
-
-    println!("{title}:");
-    for (i, (extension, count)) in v.into_iter().take(n).enumerate() {
-        println!("{:>2}. {:<10} {}", i + 1, extension, count);
-    }
+fn is_jpeg(path: &Path) -> bool {
+    let extension = normalize_extension(path);
+    matches!(extension.as_deref(), Some("jpg") | Some("jpeg"))
 }
 
-fn main() {
+fn parse_exif_datetime(value: &Value) -> Option<NaiveDateTime> {
+    let s = match value {
+        Value::Ascii(vec) if !vec.is_empty() => String::from_utf8_lossy(&vec[0]).to_string(),
+        _ => return None,
+    };
+
+    let s = s.trim();
+    NaiveDateTime::parse_from_str(s, "%Y:%m:%d %H:%M:%S").ok()
+}
+
+fn exif_capture_datetime(path: &Path) -> Result<Option<NaiveDateTime>> {
+    let file = File::open(path)?;
+    let mut reader = BufReader::new(file);
+
+    let exif = Reader::new().read_from_container(&mut reader)?;
+
+    if let Some(dt) = exif
+        .get_field(Tag::DateTimeOriginal, In::PRIMARY)
+        .and_then(|f| parse_exif_datetime(&f.value))
+    {
+        return Ok(Some(dt));
+    }
+
+    if let Some(dt) = exif
+        .get_field(Tag::DateTime, In::PRIMARY)
+        .and_then(|f| parse_exif_datetime(&f.value))
+    {
+        return Ok(Some(dt));
+    }
+
+    Ok(None)
+}
+
+fn main() -> Result<()> {
     let root = std::env::args().nth(1).unwrap_or_else(|| ".".to_string());
 
     let mut photos = 0u64;
+    let mut photos_with_date = 0u64;
     let mut videos = 0u64;
     let mut dvds = 0u64;
     let mut ignored = 0u64;
@@ -58,8 +89,28 @@ fn main() {
             continue;
         }
 
-        match classify(entry.path()) {
-            Kind::Photo => photos += 1,
+        let path = entry.path();
+
+        match classify(path) {
+            Kind::Photo => {
+                photos += 1;
+                if !is_jpeg(path) {
+                    continue;
+                }
+
+                match exif_capture_datetime(path) {
+                    Ok(Some(dt)) => {
+                        photos_with_date += 1;
+                        println!("{}    {}", dt.format("%Y-%m-%d %H:%M:%S"), path.display());
+                    }
+                    Ok(None) => {
+                        println!("(no exif date)    {}", path.display());
+                    }
+                    Err(err) => {
+                        println!("(exif error)  {} [ {err} ]", path.display());
+                    }
+                }
+            }
             Kind::Video => videos += 1,
             Kind::Dvd => dvds += 1,
             Kind::Ignore => ignored += 1,
@@ -68,7 +119,10 @@ fn main() {
 
     println!("Scanned: {root}");
     println!("Photos: {photos}");
+    println!("With EXIF data: {photos_with_date}");
     println!("Videos: {videos}");
     println!("DVD files: {dvds}");
     println!("Ignored: {ignored}");
+
+    Ok(())
 }
