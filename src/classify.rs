@@ -4,7 +4,6 @@ use std::path::Path;
 pub enum Kind {
     Photo,
     Video,
-    Dvd,
     Ignore,
 }
 
@@ -19,7 +18,6 @@ pub fn classify(path: &Path) -> Kind {
     match extension.as_deref() {
         Some("jpg") | Some("jpeg") | Some("png") => Kind::Photo,
         Some("mp4") | Some("avi") | Some("mov") | Some("m4v") => Kind::Video,
-        Some("vob") | Some("ifo") | Some("bup") => Kind::Dvd,
         _ => Kind::Ignore,
     }
 }
