@@ -16,21 +16,23 @@ fn parse_exif_datetime(value: &Value) -> Option<NaiveDateTime> {
 pub fn exif_capture_datetime(path: &Path) -> Result<Option<NaiveDateTime>> {
     let file = File::open(path)?;
     let mut reader = BufReader::new(file);
-    let exif = Reader::new().read_from_container(&mut reader)?;
 
-    if let Some(dt) = exif
-        .get_field(Tag::DateTimeOriginal, In::PRIMARY)
-        .and_then(|f| parse_exif_datetime(&f.value))
-    {
-        return Ok(Some(dt));
+    let exif_data = Reader::new().read_from_container(&mut reader).ok();
+
+    if let Some(exif) = exif_data {
+        if let Some(dt) = exif
+            .get_field(Tag::DateTimeOriginal, In::PRIMARY)
+            .and_then(|f| parse_exif_datetime(&f.value))
+        {
+            return Ok(Some(dt));
+        }
+
+        if let Some(dt) = exif
+            .get_field(Tag::DateTime, In::PRIMARY)
+            .and_then(|f| parse_exif_datetime(&f.value))
+        {
+            return Ok(Some(dt));
+        }
     }
-
-    if let Some(dt) = exif
-        .get_field(Tag::DateTime, In::PRIMARY)
-        .and_then(|f| parse_exif_datetime(&f.value))
-    {
-        return Ok(Some(dt));
-    }
-
     Ok(None)
 }
