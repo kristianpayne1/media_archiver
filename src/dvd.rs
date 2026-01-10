@@ -2,8 +2,6 @@ use anyhow::Result;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use crate::time::file_mtime;
-
 pub fn is_inside_video_ts(path: &Path) -> bool {
     path.components().any(|c| {
         c.as_os_str()
@@ -19,17 +17,6 @@ pub fn dvd_root_from_video_ts_dir(path: &Path) -> Option<PathBuf> {
         return path.parent().map(|p| p.to_path_buf());
     }
     None
-}
-
-pub fn dvd_best_datetime(dvd_root: &Path) -> Option<chrono::NaiveDateTime> {
-    file_mtime(dvd_root)
-}
-
-pub fn is_dvd_video_ts_dir(path: &Path) -> bool {
-    path.file_name()
-        .and_then(|n| n.to_str())
-        .map(|n| n.eq_ignore_ascii_case("VIDEO_TS"))
-        .unwrap_or(false)
 }
 
 pub fn dvd_main_title_vobs(dvd_root: &Path) -> Result<Vec<PathBuf>> {

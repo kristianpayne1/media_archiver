@@ -3,8 +3,6 @@ use chrono::NaiveDateTime;
 use serde_json::Value as JsonValue;
 use std::{path::Path, process::Command};
 
-use crate::time::file_mtime;
-
 pub fn ffprobe_creation_time(path: &Path) -> Result<Option<NaiveDateTime>> {
     let output = Command::new("ffprobe")
         .args(["-v", "quiet", "-print_format", "json", "-show_format"])
@@ -27,11 +25,4 @@ pub fn ffprobe_creation_time(path: &Path) -> Result<Option<NaiveDateTime>> {
         .map(|dt| dt.naive_local());
 
     Ok(dt)
-}
-
-pub fn video_best_datetime(path: &Path) -> Result<Option<NaiveDateTime>> {
-    if let Some(dt) = ffprobe_creation_time(path)? {
-        return Ok(Some(dt));
-    }
-    Ok(file_mtime(path))
 }
