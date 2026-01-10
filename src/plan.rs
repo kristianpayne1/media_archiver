@@ -1,10 +1,10 @@
 use crate::classify::{Kind, classify, normalize_extension};
-use crate::dvd;
 use crate::time::{DateSource, best_datetime_for_dvd, best_datetime_for_file, format_dt};
+use crate::{deduplicate, dvd};
 use anyhow::Result;
 use chrono::NaiveDateTime;
 use serde::Serialize;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
@@ -30,6 +30,9 @@ pub struct PlannedItem {
     pub dst: String,
     pub best_dt: Option<String>,
     pub date_source: DateSource,
+    pub size_bytes: Option<u64>,
+    pub content_hash: Option<String>,
+    pub duplicate_of: Option<String>,
 }
 
 #[derive(Debug)]
@@ -41,6 +44,8 @@ pub struct PlanSummary {
     pub missing_date: u64,
     pub need_convert_video: u64,
     pub need_convert_dvd: u64,
+    pub duplicate_photos: u64,
+    pub duplicate_videos: u64,
 }
 
 impl PlanSummary {
@@ -53,6 +58,8 @@ impl PlanSummary {
             missing_date: 0,
             need_convert_video: 0,
             need_convert_dvd: 0,
+            duplicate_photos: 0,
+            duplicate_videos: 0,
         }
     }
 }
@@ -121,6 +128,61 @@ fn action_for_video(path: &Path) -> Action {
     }
 }
 
+fn mark_input_duplicates(planned: &mut [PlannedItem], summary: &mut PlanSummary) -> Result<()> {
+    let mut paths: Vec<PathBuf> = Vec::new();
+    for item in planned.iter() {
+        match item.kind {
+            MediaKind::Photo | MediaKind::Video => {
+                paths.push(PathBuf::from(&item.src));
+            }
+            _ => {}
+        }
+    }
+
+    let dup_groups = deduplicate::find_exact_duplicates(&paths)?;
+
+    let mut duplicate_of: HashMap<String, String> = HashMap::new();
+    let mut hash_of: HashMap<String, String> = HashMap::new();
+
+    for (h, mut group) in dup_groups {
+        group.sort();
+        let canonical = group[0].clone();
+        hash_of.insert(canonical.to_string_lossy().to_string(), h.clone());
+
+        for p in group.into_iter().skip(1) {
+            duplicate_of.insert(
+                p.to_string_lossy().to_string(),
+                canonical.to_string_lossy().to_string(),
+            );
+            hash_of.insert(p.to_string_lossy().to_string(), h.clone());
+        }
+    }
+
+    for item in planned.iter_mut() {
+        if !matches!(item.kind, MediaKind::Photo | MediaKind::Video) {
+            continue;
+        }
+
+        let p = PathBuf::from(&item.src);
+        item.size_bytes = std::fs::metadata(&p).ok().map(|m| m.len());
+
+        if let Some(h) = hash_of.get(&item.src) {
+            item.content_hash = Some(h.clone());
+        }
+
+        if let Some(canon) = duplicate_of.get(&item.src) {
+            item.duplicate_of = Some(canon.clone());
+            match item.kind {
+                MediaKind::Photo => summary.duplicate_photos += 1,
+                MediaKind::Video => summary.duplicate_videos += 1,
+                _ => {}
+            }
+        }
+    }
+
+    Ok(())
+}
+
 pub fn build_plan(root: &Path, out_root: &Path) -> Result<(Vec<PlannedItem>, PlanSummary)> {
     let mut planned: Vec<PlannedItem> = Vec::new();
     let mut summary = PlanSummary::new();
@@ -167,6 +229,9 @@ pub fn build_plan(root: &Path, out_root: &Path) -> Result<(Vec<PlannedItem>, Pla
                     dst: dst.to_string_lossy().to_string(),
                     best_dt: dt.map(format_dt),
                     date_source: source,
+                    size_bytes: None,
+                    content_hash: None,
+                    duplicate_of: None,
                 });
 
                 summary.planned += 1;
@@ -192,6 +257,9 @@ pub fn build_plan(root: &Path, out_root: &Path) -> Result<(Vec<PlannedItem>, Pla
                     dst: dst.to_string_lossy().to_string(),
                     best_dt: dt.map(format_dt),
                     date_source: source,
+                    size_bytes: None,
+                    content_hash: None,
+                    duplicate_of: None,
                 });
 
                 summary.planned += 1;
@@ -199,6 +267,8 @@ pub fn build_plan(root: &Path, out_root: &Path) -> Result<(Vec<PlannedItem>, Pla
             _ => {}
         }
     }
+
+    mark_input_duplicates(&mut planned, &mut summary)?;
 
     for dvd_root in dvd_roots {
         summary.dvds += 1;
@@ -218,6 +288,9 @@ pub fn build_plan(root: &Path, out_root: &Path) -> Result<(Vec<PlannedItem>, Pla
             dst: dst.to_string_lossy().to_string(),
             best_dt: dt.map(format_dt),
             date_source: source,
+            size_bytes: None,
+            content_hash: None,
+            duplicate_of: None,
         });
 
         summary.need_convert_dvd += 1;

@@ -4,6 +4,7 @@ use std::io::Write;
 use std::path::PathBuf;
 
 mod classify;
+mod deduplicate;
 mod dvd;
 mod photo_exif;
 mod plan;
@@ -32,6 +33,8 @@ fn main() -> Result<()> {
     println!("Missing date:        {}", summary.missing_date);
     println!("Need convert (video):{}", summary.need_convert_video);
     println!("Need convert (dvd):  {}", summary.need_convert_dvd);
+    println!("Duplicate photos:    {}", summary.duplicate_photos);
+    println!("Duplicate videos:    {}", summary.duplicate_videos);
     println!("Out root:            {}", out_root.display());
     println!("Wrote:               manifest.jsonl");
 
