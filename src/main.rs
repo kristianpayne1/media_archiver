@@ -7,8 +7,10 @@ mod apply;
 mod classify;
 mod deduplicate;
 mod dvd;
+mod manifest;
 mod photo;
 mod plan;
+mod report;
 mod time;
 mod video;
 
@@ -43,7 +45,7 @@ fn main() -> Result<()> {
         "apply" => {
             let manifest =
                 PathBuf::from(args.next().unwrap_or_else(|| "manifest.jsonl".to_string()));
-            let items = apply::read_manifest_jsonl(&manifest)?;
+            let items = manifest::read_manifest_jsonl(&manifest)?;
             let summary = apply::apply_items(&items)?;
 
             println!("Applied manifest:     {}", manifest.display());
@@ -55,6 +57,20 @@ fn main() -> Result<()> {
             println!("Skipped duplicate:    {}", summary.skipped_dupliace);
             println!("Failed:               {}", summary.failed);
             println!("Logs: apply_ok.log, apply_fail.log, apply_duplicates_skipped.log");
+        }
+        "report" => {
+            let manifest =
+                PathBuf::from(args.next().unwrap_or_else(|| "manifest.jsonl".to_string()));
+            let validate_outputs = args.next().as_deref() == Some("--validate-outputs");
+
+            let items = manifest::read_manifest_jsonl(&manifest)?;
+            let (summary, notes) = report::build_report(&items, validate_outputs)?;
+            report::print_report(&summary, &notes, validate_outputs);
+
+            println!("\nManifest: {}", manifest.display());
+            println!(
+                "Tip: run `cargo run -- report manifest.jsonl --validate-outputs` after apply."
+            );
         }
         _ => {
             eprintln!("Usage:");

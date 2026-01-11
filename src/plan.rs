@@ -15,7 +15,7 @@ pub enum Action {
     ConvertDvd,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum MediaKind {
     Photo,
     Video,

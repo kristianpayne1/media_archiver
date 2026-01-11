@@ -2,8 +2,8 @@ use crate::dvd::ffmpeg_convert_dvd_to_mp4;
 use crate::plan::{Action, PlannedItem};
 use crate::video::ffmpeg_convert_to_mp4;
 use anyhow::{Context, Result};
-use std::fs::{self, File, OpenOptions};
-use std::io::{BufRead, BufReader, Write};
+use std::fs::{self, OpenOptions};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 pub struct ApplySummary {
@@ -42,25 +42,6 @@ fn copy_file(src: &Path, dst: &Path) -> Result<()> {
     fs::copy(src, dst).with_context(|| format!("copy {} -> {}", src.display(), dst.display()))?;
     Ok(())
 }
-
-pub fn read_manifest_jsonl(path: &Path) -> Result<Vec<PlannedItem>> {
-    let file = File::open(path).with_context(|| format!("open manifest {}", path.display()))?;
-    let reader = BufReader::new(file);
-
-    let mut items = Vec::new();
-    for (i, line) in reader.lines().enumerate() {
-        let line = line?;
-        if line.trim().is_empty() {
-            continue;
-        }
-        let item: PlannedItem =
-            serde_json::from_str(&line).with_context(|| format!("parse json on line {}", i + 1))?;
-        items.push(item);
-    }
-
-    Ok(items)
-}
-
 pub fn apply_items(items: &[PlannedItem]) -> Result<ApplySummary> {
     let mut ok_log = OpenOptions::new()
         .create(true)
